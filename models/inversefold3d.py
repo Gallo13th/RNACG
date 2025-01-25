@@ -2,8 +2,6 @@
 import torch
 import warnings
 warnings.filterwarnings('ignore')
-
-
 import torch.utils
 from modules import sequence_flow
 from utils import flow_utils
@@ -11,7 +9,21 @@ import numpy as np
 import tqdm
 import torch.optim as optim
 from sklearn.metrics import f1_score
+from modules.inv3d.RNAMPNN import RNAMPNN
+from ml_collections import ConfigDict
+from modules.inv3d import rdesign_dataproc as dataproc
 from models.trainer import Trainer
+
+DEFAULT_CONFIG =  {"device": "cuda", 
+"node_feat_types": ["angle", "distance", "direction"],
+"edge_feat_types": ["orientation", "distance", "direction"], 
+"num_encoder_layers": 3,
+"num_decoder_layers": 3, 
+"hidden": 128, 
+"k_neighbors": 30, 
+"vocab_size": 4,
+"dropout": 0.1, 
+}
 
 def simplex_proj(seq):
     """Algorithm from https://arxiv.org/abs/1309.1541 Weiran Wang, Miguel Á. Carreira-Perpiñán"""
@@ -61,12 +73,6 @@ def loss_nll_flatten(S, log_probs):
         loss = criterion(log_probs, S)
         loss_av = loss.mean()
         return loss, loss_av
-
-from models import inversefold2d
-from modules.inv3d.RNAMPNN import RNAMPNN
-import torch
-from ml_collections import ConfigDict
-from modules.inv3d import rdesign_dataproc as dataproc
 class test_dataset(torch.utils.data.Dataset):
     
     def __init__(self,datapath):
@@ -240,16 +246,7 @@ class InverseFold3DTrainer(Trainer):
                 total_count += 1
                 pbar.set_description(f'[TEST] seq_auc: {total_auc/total_count:.3f}')
         auc = total_auc / total_count
-        # target = np.concatenate(target)
-        # pred = np.concatenate(pred)
-        # macro_f1 = f1_score(target,pred,average='macro')
         macro_f1 = total_f1 / total_count
-        # short_target = np.concatenate([i[0] for i in short_results])
-        # short_pred = np.concatenate([i[1] for i in short_results])
-        # medium_target = np.concatenate([i[0] for i in medium_results])
-        # medium_pred = np.concatenate([i[1] for i in medium_results])
-        # long_target = np.concatenate([i[0] for i in long_results])
-        # long_pred = np.concatenate([i[1] for i in long_results])
         short_macro_f1 = np.mean([f1_score(short_target,short_pred,average='macro') for short_target,short_pred in short_results])
         medium_macro_f1 = np.mean([f1_score(medium_target,medium_pred,average='macro') for medium_target,medium_pred in medium_results])
         long_macro_f1 = np.mean([f1_score(long_target,long_pred,average='macro') for long_target,long_pred in long_results])
@@ -262,24 +259,17 @@ class InverseFold3DTrainer(Trainer):
 
     def generate(self, dataloader, timesteps=10):
         self.model.eval()
-        short_results = []
-        medium_results = []
-        long_results = []
+        results = []
         pbar = tqdm.tqdm(dataloader)
         for data in pbar:
-            seqauc,S,S_pred,mask = self.generate_on_timesteps(data,timesteps)
+            _,S,S_pred,mask = self.generate_on_timesteps(data,timesteps)
             names = data[-1]
             b = S.shape[0]
             for i in range(b):
                 tmp_pred = S_pred[i,mask[i]].cpu().numpy()
                 tmp_pred = ''.join(['AUCG'[j] for j in tmp_pred])
-                if len(tmp_pred) <= 50:
-                    short_results.append((names[i],tmp_pred))
-                elif len(tmp_pred) <= 100:
-                    medium_results.append((names[i],tmp_pred))
-                else:
-                    long_results.append((names[i],tmp_pred))
-        return short_results,medium_results,long_results
+                results.append((names[i],tmp_pred))
+        return results
 
 class weighted_cross_entropy(torch.nn.Module):
     def __init__(self):
@@ -294,48 +284,25 @@ class weighted_cross_entropy(torch.nn.Module):
         # input/pred dim: [b, s, d]
         # target dim: [b, s]
         # for input[b, i, :], target[b, i] is the index of the target class, if input is closer to target, the weight is smaller
-        # weight = torch.argmax(input, dim=-1) == target # [b, s]
         weight = torch.nn.functional.cross_entropy(input, target, reduction='none') # [b, s]
         weight = self._normal_weight(weight)
         weight = torch.ones_like(weight).to(torch.float32)
         weight_ = weight.clone().detach().requires_grad_(True)
-        # weight_ = torch.ones_like(weight).to(torch.float32).requires_grad_(True)
         ce_pred_tar = torch.nn.functional.cross_entropy(pred, target, reduction='none') # [b, s]
-        # return ce_pred_tar.mean()
         return (weight_ * ce_pred_tar).sum() / weight_.sum()
 
 
         
-def main():
-    config = {"device": "cuda", 
-              "node_feat_types": ["angle", "distance", "direction"],
-              "edge_feat_types": ["orientation", "distance", "direction"], 
-              "num_encoder_layers": 3,
-              "num_decoder_layers": 3, 
-              "hidden": 128, 
-              "k_neighbors": 30, 
-              "vocab_size": 4,
-              "shuffle": 0.0, 
-              "dropout": 0.1, 
-              "smoothing": 0.1, 
-              "weigth_clu_con": 0.5, 
-              "weigth_sam_con": 0.5, 
-              "ss_temp": 0.5}
+def train():
     for idx in range(8):
-        test_set = test_dataset('./datas/RDesign/pdb2rdesignfmt_new.pt')
-        # name_seq_dict = {data['name']:data['raw_seq'] for data in test_set}
-        # name_tvt_dict = {data['name']:data[f'train_valid_test_{idx}'] for data in test_set}
-        train_set = [data for i, data in enumerate(test_set) if data[f'train_valid_test_{idx}']=='TRAIN']
-        valid_set = [data for i, data in enumerate(test_set) if data[f'train_valid_test_{idx}']=='VAL']
-        test_set = [data for i, data in enumerate(test_set) if data[f'train_valid_test_{idx}']=='TEST']
-        # train_set = test_dataset('./datas/RDesign/train_data.pt')
-        # valid_set = test_dataset('./datas/RDesign/val_data.pt')
-        # test_set = test_dataset('./datas/RDesign/test_data.pt')
+        raw_set = test_dataset('./datas/RDesign/pdb2rdesignfmt_new.pt')
+        train_set = [data for i, data in enumerate(raw_set) if data[f'train_valid_test_{idx}']=='TRAIN']
+        valid_set = [data for i, data in enumerate(raw_set) if data[f'train_valid_test_{idx}']=='VAL']
+        test_set = [data for i, data in enumerate(raw_set) if data[f'train_valid_test_{idx}']=='TEST']
         train_loader = torch.utils.data.DataLoader(train_set, batch_size=32, shuffle=True, num_workers=2, collate_fn=dataproc.featurize)
         valid_loader = torch.utils.data.DataLoader(valid_set, batch_size=16, shuffle=True, num_workers=2, collate_fn=dataproc.featurize)
         test_loader = torch.utils.data.DataLoader(test_set, batch_size=1, shuffle=False, num_workers=2, collate_fn=dataproc.featurize)
-        # train_loader,valid_loader,test_loader = dataproc.load_data(16,'./datas/RDesign',num_workers=1)
-        condition = RNAMPNN(ConfigDict(config))
+        condition = RNAMPNN(ConfigDict(DEFAULT_CONFIG))
         condition = condition.to('cuda:0')
         condition = wrap_model(condition)
         
@@ -351,29 +318,14 @@ def main():
                 optim_param_group.append({'params':param,'lr':lr})
             else:
                 optim_param_group.append({'params':param,'lr':lr*0.1})
-                # param.detach_()
         optimizer = optim.Adam(optim_param_group,lr=lr)
         
         trainer = InverseFold3DTrainer(flow_model, optimizer,  weighted_cross_entropy(), 'cuda:0')
         trainer.train(train_loader,valid_loader,test_loader,50)
         trainer.test(test_loader,10)
-        # short, medium, long = trainer.generate(test_loader,1)
-        # with open(f'output_{idx}.txt','w') as f:
-        #     for name, target in short:
-        #         if '_missed' in name:
-        #             continue
-        #         f.write(f'{name}\t{target}\t{name_seq_dict[name]}\t{name_tvt_dict[name]}\n')
-        #     for name, target in medium:
-        #         if '_missed' in name:
-        #             continue
-        #         f.write(f'{name}\t{target}\t{name_seq_dict[name]}\t{name_tvt_dict[name]}\n')
-        #     for name, target in long:
-        #         if '_missed' in name:
-        #             continue
-        #         f.write(f'{name}\t{target}\t{name_seq_dict[name]}\t{name_tvt_dict[name]}\n')
-            
-        
-        
     return False
+
+def main(args):
+
 if __name__ == '__main__':
     main()

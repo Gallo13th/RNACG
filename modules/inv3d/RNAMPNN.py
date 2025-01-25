@@ -19,8 +19,7 @@ class RNAMPNN(nn.Module):
     def __init__(self, config):
         super(RNAMPNN, self).__init__()
         self.config = config
-        self.device = 'cuda:0'
-        self.smoothing = config.smoothing
+        self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
         self.node_features = self.edge_features =  config.hidden
         self.hidden_dim = config.hidden
         self.vocab = config.vocab_size

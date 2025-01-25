@@ -1,25 +1,21 @@
-import sys
-
 from models import inversefold3d
-from modules.inv3d.RNAMPNN import RNAMPNN
-import torch
-from ml_collections import ConfigDict
+import argparse
+import hydra
+
+def parser_args():
+    parser = argparse.ArgumentParser(description='Inverse RNA 3D folding')
+    parser.add_argument('--input', type=str, help='Input RNA PDB file')
+    parser.add_argument('--output', type=str, help='Output file')
+    parser.add_argument('--model', type=str, help='Model file')
+    parser.add_argument('--device', type=str, default='cpu', help='Device')
+    parser.add_argument('--n_samples', type=int, default=1, help='Number of samples')
+    parser.add_argument('--n_steps', type=int, default=10, help='Number of time steps for generation')
+    parser.add_argument('--seed', type=int, default=0, help='Random seed')
+    parser.add_argument('--model_config', type=str, default='config.yaml', help='Configuration file')
+    return parser.parse_args()
+
+
 if __name__ == '__main__':
-    #main_generate()
-    inversefold3d.main()
-    config = {"device": "cuda", 
-              "node_feat_types": ["angle", "distance", "direction"],
-              "edge_feat_types": ["orientation", "distance", "direction"], 
-              "num_encoder_layers": 3,
-              "num_decoder_layers": 3, 
-              "hidden": 128, 
-              "k_neighbors": 30, 
-              "vocab_size": 4,
-              "shuffle": 0.0, 
-              "dropout": 0.1, 
-              "smoothing": 0.1, 
-              "weigth_clu_con": 0.5, 
-              "weigth_sam_con": 0.5, 
-              "ss_temp": 0.5}
-    print(RNAMPNN(ConfigDict(config)).load_state_dict(torch.load("./ckpts/inv3dcondition.pth")))
-    pass
+    args = parser_args()
+    hydra.initialize_config_dir(config_dir='config')
+    inversefold3d.main(args)
