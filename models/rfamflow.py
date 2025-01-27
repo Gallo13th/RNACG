@@ -37,7 +37,6 @@ def post_process(predprob,pair_edges):
         end_idx = maxidx % 4
         pred1hot[start] = start_idx
         pred1hot[end] = end_idx
-        # print(pred1hot[start],pred1hot[end])
     return pred1hot
 
 
