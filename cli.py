@@ -11,10 +11,10 @@ def parser_args():
     parser.add_argument('--device', type=str, default='cpu', help='Device')
     parser.add_argument('--n_samples', type=int, default=1, help='Number of samples')
     parser.add_argument('--n_steps', type=int, default=10, help='Number of time steps for generation')
+    parser.add_argument('--seq_length', type=int, default=100, help='Sequence length')
     parser.add_argument('--seed', type=int, default=0, help='Random seed')
     parser.add_argument('--model_config', type=str, default='config.yaml', help='Configuration file')
     return parser.parse_args()
-
 
 if __name__ == '__main__':
     args = parser_args()

@@ -352,7 +352,7 @@ class weighted_cross_entropy(torch.nn.Module):
         return (weight_ * ce_pred_tar).sum() / weight_.sum()
 
 
-def main(device='cuda:0'):
+def test_script(device='cuda:0'):
     rfam_seq = pd.read_csv('rfam_seq.csv')
     for rfam_acc in rfam_seq['rfam_acc'].unique():
         dataset = InverseFoldDataset('rfam_seq.csv',target_rfam=rfam_acc)
@@ -385,6 +385,27 @@ def main(device='cuda:0'):
                     f.write(seq + '\n')
                     f.write(f'>{rfam_acc}_{gen_idx}_time_{idx}_ss_{ss}_mfess_{mfe_ss}_rec\n')
                     f.write(seq_rec_traj[idx] + '\n')
+
+def main(args):
+    device = args.device
+    rfam_acc = args.rfam_acc
+    model = sequence_flow.SequenceFlow(5,128,6,16,16).to(device)
+    trainer = InverseFold2DTrainer(model,None,weighted_cross_entropy(),device)
+    output = args.output
+    n_samples = args.n_samples
+    seq_length = args.seq_length
+    timesteps = args.n_steps
+    for gen_idx in tqdm.trange(n_samples):
+        data = torch.randint(0,4,(1,seq_length))
+        mask = torch.ones_like(data,dtype=torch.bool)
+        idx = torch.tensor([0])
+        seq_traj,seq_rec_traj = trainer.generate((data,mask,idx),timesteps=timesteps)
+        with open(output,'a') as f:
+            for idx, seq in enumerate(seq_traj):
+                f.write(f'>{rfam_acc}_{gen_idx}_time_{idx}\n')
+                f.write(seq + '\n')
+                f.write(f'>{rfam_acc}_{gen_idx}_time_{idx}_rec\n')
+                f.write(seq_rec_traj[idx] + '\n')
     return 
 
 # def warmup(x):
@@ -398,7 +419,3 @@ def main(device='cuda:0'):
 
 
 
-
-if __name__ == '__main__':
-    main()
-    pass
