@@ -2,6 +2,31 @@ import torch
 import scipy
 import numpy as np
 
+def simplex_proj(seq):
+    """
+    Project a sequence onto the simplex space.
+    Algorithm from https://arxiv.org/abs/1309.1541 by Weiran Wang and Miguel Á. Carreira-Perpiñán.
+
+    Args:
+        seq: Input sequence tensor.
+
+    Returns:
+        Projected sequence tensor.
+    """
+    Y = seq.reshape(-1, seq.shape[-1])
+    N, K = Y.shape
+    X, _ = torch.sort(Y, dim=-1, descending=True)
+    X_cumsum = torch.cumsum(X, dim=-1) - 1
+    div_seq = torch.arange(1, K + 1, dtype=Y.dtype, device=Y.device)
+    Xtmp = X_cumsum / div_seq.unsqueeze(0)
+
+    greater_than_Xtmp = (X > Xtmp).sum(dim=1, keepdim=True)
+    row_indices = torch.arange(N, dtype=torch.long, device=Y.device).unsqueeze(1)
+    selected_Xtmp = Xtmp[row_indices, greater_than_Xtmp - 1]
+
+    X = torch.max(Y - selected_Xtmp, torch.zeros_like(Y))
+    return X.view(seq.shape)
+
 def k_class_norm_dist(k,batch_size=1):
     dists = [torch.distributions.normal.Normal(k,1).sample((batch_size,)) for i in range(k)]
     x = torch.sum(torch.stack(dists),0)

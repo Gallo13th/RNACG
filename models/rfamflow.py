@@ -1,14 +1,16 @@
-
+import torch
+import tqdm
+import torch.optim as optim
 import torch.utils
 from modules import sequence_flow
 from utils import flow_utils,constant
 import numpy as np
-import torch
-import tqdm
-import torch.optim as optim
 from sklearn.metrics import f1_score
 from models.trainer import Trainer
 import pandas as pd
+import RNA
+def cal_ss(seq):
+    return RNA.fold(seq)[0]
 '''
     A    T/U  C    G
 A   0    1    0    0
@@ -223,17 +225,8 @@ class InverseFold2DTrainer(Trainer):
             pred.append(vt[mask[:,1:]][:,1:].argmax(dim=-1).cpu().numpy())
             pred_clone = vt.clone().argmax(-1)
             predprob = vt[mask[:,1:],:][:,1:]
-            # pair_edges = np.array([pair for pair in edge.cpu().numpy().T if abs(pair[0] - pair[1]) != 1])
-            # pred1hot = post_process(predprob,torch.from_numpy(pair_edges).to(predprob.device))
-            # pred_clone[mask[:,1:]] = pred1hot
             for k in range(4):
                 aucs[k].append(top_k_accuracy(predprob,x1[mask[:,1:]][:,1:].argmax(-1),k=k+1).item())
-            # for i in range(vt.shape[0]):
-            #     pred1hot = pred_clone[i][mask[i,1:]]
-            #     target1hot = x1[i][mask[i,1:],1:].argmax(-1)
-            #     target_fasta = ''.join([str(j.item()) for j in target1hot])
-            #     pred_fasta = ''.join([str(j.item()) for j in pred1hot])
-            #     test_results.append({'target':target_fasta,'pred':pred_fasta,'pair_edges':raw_edge[i]})
             mask = mask.cpu()
             x1 = x1.cpu()
             pred_clone = pred_clone.cpu()
@@ -356,14 +349,9 @@ class weighted_cross_entropy(torch.nn.Module):
         weight = torch.nn.functional.cross_entropy(input, target, reduction='none') # [b, s]
         weight = self._normal_weight(weight)
         weight_ = weight.clone().detach().requires_grad_(True)
-        # weight_ = torch.ones_like(weight).to(torch.float32).requires_grad_(True)
         ce_pred_tar = torch.nn.functional.cross_entropy(pred, target, reduction='none') # [b, s]
-        # return ce_pred_tar.mean()
         return (weight_ * ce_pred_tar).sum() / weight_.sum()
 
-import RNA
-def cal_ss(seq):
-    return RNA.fold(seq)[0]
 
 def main(device='cuda:0'):
     rfam_seq = pd.read_csv('rfam_seq.csv')
@@ -376,18 +364,6 @@ def main(device='cuda:0'):
         val_dataloader = torch.utils.data.DataLoader(val_dataset,batch_size=4,shuffle=False,collate_fn=collet_fn_rfamflow)
         test_dataloader = torch.utils.data.DataLoader(test_dataset,batch_size=1,shuffle=False,collate_fn=collet_fn_rfamflow)
         model = sequence_flow.SequenceFlow(5,128,6,16,16).to(device)
-        # model_module_state_dict = torch.load('./ckpts/bestmodel_inverse2d.pth')['model']
-        # model.load_state_dict({k[7:]:v for k,v in model_module_state_dict.items()},strict=False)
-        # optim_param_group = []
-        # for name,param in model.named_parameters():
-        #     if 'condition' in name:
-        #         optim_param_group.append({'params':param,'lr':3e-4})
-        #     else:
-        #         optim_param_group.append({'params':param,'lr':3e-4})
-        # optimizer = optim.Adam(optim_param_group)
-        # trainer = InverseFold2DTrainer(model,optimizer,weighted_cross_entropy(),device)
-        # model = trainer.train(train_dataloader,val_dataloader,test_dataloader,50)
-        # torch.save({'model':model.state_dict()},f'./ckpts/bestmodel_inverse2d_{rfam_acc}.pth')
         model.load_state_dict(torch.load(f'./ckpts/bestmodel_inverse2d_{rfam_acc}.pth')['model'])
         trainer = InverseFold2DTrainer(model,None,weighted_cross_entropy(),device)
         output = f'{rfam_acc}_testgen.fasta'
@@ -412,14 +388,14 @@ def main(device='cuda:0'):
                     f.write(seq_rec_traj[idx] + '\n')
     return 
 
-def warmup(x):
-    if x < 50:
-        return 1 # 0.1 + 0.9 * x / 50
-    elif x < 100:
-        return 1
-    else:
-        # cosine decay
-        return 0.45 * (1 + np.cos((x-100) / 1900 * np.pi)) + 0.1
+# def warmup(x):
+#     if x < 50:
+#         return 1 # 0.1 + 0.9 * x / 50
+#     elif x < 100:
+#         return 1
+#     else:
+#         # cosine decay
+#         return 0.45 * (1 + np.cos((x-100) / 1900 * np.pi)) + 0.1
 
 
 

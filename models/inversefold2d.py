@@ -8,7 +8,6 @@ import tqdm
 import torch.optim as optim
 from sklearn.metrics import f1_score 
 from models.trainer import Trainer
-from models import inversefold2d
 from modules.inv3d.RNAMPNN import RNAMPNN2D
 import torch
 from ml_collections import ConfigDict
