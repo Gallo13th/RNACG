@@ -391,6 +391,8 @@ def main(args):
     rfam_acc = args.rfam_acc
     model = sequence_flow.SequenceFlow(5,128,6,16,16).to(device)
     trainer = InverseFold2DTrainer(model,None,weighted_cross_entropy(),device)
+    ckpts = torch.load(args.model)
+    model.load_state_dict(ckpts['model'])
     output = args.output
     n_samples = args.n_samples
     seq_length = args.seq_length

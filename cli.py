@@ -3,7 +3,7 @@ import argparse
 
 def parser_args():
     parser = argparse.ArgumentParser(description='Inverse RNA 3D folding')
-    parser.add_argument('--input', type=str, help='Input RNA PDB file')
+    parser.add_argument('--input', type=str, help='Input RNA PDB file(Inversefold) or RNA famliy accession(Rfam)')
     parser.add_argument('--output', type=str, help='Output file')
     parser.add_argument('--task', type=str, default='rfam', help='Task: rfam or inversefold')
     parser.add_argument('--mode', type=str, default='generate', help='Mode: generate or predict')

@@ -11,6 +11,7 @@ from models.trainer import Trainer
 from modules import sequence_flow
 from utils import flow_utils
 from utils.flow_utils import simplex_proj
+
 # Suppress warnings
 warnings.filterwarnings('ignore')
 
@@ -435,11 +436,47 @@ def train():
 
     return False
 
+def parser_pdb_file(pdb_file_path):
+    """
+    Parse the PDB file and extract the sequence and coordinates.
+
+    Args:
+        pdb_file_path: Path to the PDB file.
+
+    Returns:
+        Sequence and coordinates extracted from the PDB file.
+    """
+    with open(pdb_file_path, 'r') as f:
+        lines = f.readlines()
+    seq = ''
+    coords = {}
+    for line in lines:
+        if line.startswith('ATOM'):
+            atom_name = line[12:16].strip()
+            if atom_name == "P":
+                seq += line[17:20].strip()
+            if atom_name in ['P', 'O5\'', 'C5\'', 'C4\'', 'C3\'', 'O3\'']:
+                resi = int(line[22:26].strip())
+                if resi not in coords:
+                    coords[resi] = []
+                coords[resi].append([float(line[30:38].strip()), float(line[38:46].strip()), float(line[46:54].strip())])
+    return seq, coords
+
 def main(args):
     """
     Main function to run the training process.
     """
-    pass
+    ckpts_path = args.model
+    device = args.device
+    input_path = args.input
+    
+    condition = RNAMPNN(ConfigDict(DEFAULT_CONFIG))
+    condition = condition.to(device)
+    condition = wrap_model(condition)
+
+    flow_model = sequence_flow.SequenceFlow(4, 128, 6, 16, 16, condition=condition).to(device)
+    flow_model.load_state_dict(torch.load(ckpts_path)['model'])
+
 
 if __name__ == '__main__':
     main()
