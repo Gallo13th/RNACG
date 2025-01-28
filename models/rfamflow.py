@@ -388,7 +388,7 @@ def test_script(device='cuda:0'):
 
 def main(args):
     device = args.device
-    rfam_acc = args.rfam_acc
+    rfam_acc = args.input
     model = sequence_flow.SequenceFlow(5,128,6,16,16).to(device)
     trainer = InverseFold2DTrainer(model,None,weighted_cross_entropy(),device)
     ckpts = torch.load(args.model)
@@ -401,7 +401,7 @@ def main(args):
         data = torch.randint(0,4,(1,seq_length))
         mask = torch.ones_like(data,dtype=torch.bool)
         idx = torch.tensor([0])
-        seq_traj,seq_rec_traj = trainer.generate((data,mask,idx),timesteps=timesteps)
+        seq_traj,seq_rec_traj = trainer.generate((data,mask,idx,'.'*seq_length,), timesteps=timesteps)
         with open(output,'a') as f:
             for idx, seq in enumerate(seq_traj):
                 f.write(f'>{rfam_acc}_{gen_idx}_time_{idx}\n')
