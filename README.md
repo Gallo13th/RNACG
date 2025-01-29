@@ -4,7 +4,7 @@ This is the official implementation of RNACG, we would like to release the param
 
 We are still working on the code cleaning and will update this repository frequently. Please stay tuned.
 
-## Easy Start
+# Easy Start
 
 We provide rfamflow model on RF00001 as an example. You can find the model in `ckpts/bestmodel_RF00001.pth` and the output file in `data/examples/RF00001test.out`.
 
@@ -17,8 +17,9 @@ Similarly, you can run the following command to generate the output file for the
 
 ```bash
 python cli.py --task inversefold --input .\data\examples\inv3d_example.pdb --output .\data\examples\inv3d.out --model .\ckpts\best_inv3dflow_ribodiffusion_0.pth --device cuda:0
-`
 ```
+
+# Reproduce the results in the paper
 
 > To Be Continued
 
