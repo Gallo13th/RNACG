@@ -1,8 +1,12 @@
+import Bio.Data
+import Bio.Data.PDBData
 import torch
 import warnings
 import numpy as np
 import tqdm
 import torch.optim as optim
+import Bio.PDB
+import RNA
 from sklearn.metrics import f1_score
 from ml_collections import ConfigDict
 from modules.inv3d.RNAMPNN import RNAMPNN
@@ -436,31 +440,58 @@ def train():
 
     return False
 
-def parser_pdb_file(pdb_file_path):
-    """
-    Parse the PDB file and extract the sequence and coordinates.
+def cal_ss(seq):
+    """Calculate secondary structure."""
+    ss, _ = RNA.fold(seq)
+    return ss
 
-    Args:
-        pdb_file_path: Path to the PDB file.
+atom_cand = ['P', "O5'", "C5'", "C4'", "C3'", "O3'"]
 
-    Returns:
-        Sequence and coordinates extracted from the PDB file.
-    """
-    with open(pdb_file_path, 'r') as f:
+def clean_pdb(pdb_file):
+    # remove HETATM and protein residues
+    with open(pdb_file, 'r') as f:
         lines = f.readlines()
-    seq = ''
-    coords = {}
-    for line in lines:
-        if line.startswith('ATOM'):
-            atom_name = line[12:16].strip()
-            if atom_name == "P":
-                seq += line[17:20].strip()
-            if atom_name in ['P', 'O5\'', 'C5\'', 'C4\'', 'C3\'', 'O3\'']:
-                resi = int(line[22:26].strip())
-                if resi not in coords:
-                    coords[resi] = []
-                coords[resi].append([float(line[30:38].strip()), float(line[38:46].strip()), float(line[46:54].strip())])
-    return seq, coords
+    with open(pdb_file, 'w') as f:
+        for line in lines:
+            if line.startswith('ATOM'):
+                resname = line[17:20].replace(' ', '')
+                resname = resname + ' '*(3-len(resname))
+                if resname in Bio.Data.PDBData.nucleic_letters_3to1_extended:
+                    f.write(line)
+
+def pdb2rdesignfmt(pdb_file):
+    """Convert a PDB file to rdesignfmt."""
+    # Clean PDB file
+    clean_pdb(pdb_file)
+    # Load PDB file
+    parser = Bio.PDB.PDBParser()
+    structure = parser.get_structure('pdb', pdb_file)
+    model = structure[0]
+    seq = []
+    # Extract first chain
+    for chain in model:
+        chain_A = chain
+
+    # Extract coordinates
+    coords = {'coords': {atom: [] for atom in atom_cand}}
+    for residue in chain_A:
+        resname = residue.get_resname()
+        resname = resname + ' '*(3-len(resname))
+        if resname not in Bio.Data.PDBData.nucleic_letters_3to1_extended:
+            continue
+        seq.append(Bio.Data.PDBData.nucleic_letters_3to1_extended[resname])
+        for atom in atom_cand:
+            try:
+                coords['coords'][atom].append(residue[atom].get_coord())
+            except KeyError:
+                # print(f"Atom {atom} not found in residue {residue.get_resname()}")
+                coords['coords'][atom].append([np.nan, np.nan, np.nan])
+    coords['residues'] = seq
+    coords['ss'] = '.' * len(seq)
+    coords['name'] = pdb_file.split('/')[-1].split('.')[0]
+    coords['cluster'] = 0
+    coords['seq'] = ''.join(seq)
+    return coords
 
 def main(args):
     """
@@ -469,13 +500,28 @@ def main(args):
     ckpts_path = args.model
     device = args.device
     input_path = args.input
-    
+    output_path = args.output
+    timesteps = args.n_steps
     condition = RNAMPNN(ConfigDict(DEFAULT_CONFIG))
     condition = condition.to(device)
     condition = wrap_model(condition)
 
     flow_model = sequence_flow.SequenceFlow(4, 128, 6, 16, 16, condition=condition).to(device)
     flow_model.load_state_dict(torch.load(ckpts_path)['model'])
+    
+    input_set = pdb2rdesignfmt(input_path)
+    data = dataproc.featurize([input_set])
+    
+    trainer = InverseFold3DTrainer(flow_model, None, None, device)
+    
+    flow_model.eval()
+    with torch.no_grad():
+        output, mask_, S_pred, x1 = trainer.generate_on_timesteps(data, timesteps)
+    with open(output_path, 'w') as f:
+        for b in range(S_pred.shape[0]):
+            S = S_pred[b]
+            f.write(f'>generated_{b}\n')
+            f.write(''.join(['AUCG'[i] for i in S.cpu().numpy()]) + '\n')
 
 
 if __name__ == '__main__':
